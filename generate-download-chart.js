@@ -7,6 +7,8 @@ const path = require("path");
 const inputFile = "chatgpt-md-history.json";
 // Output HTML file with the chart
 const outputHtmlFile = "chatgpt-md-downloads-chart.html";
+// Output CSS file
+const outputCssFile = "chatgpt-md-downloads-chart.css";
 
 // Read and parse the JSON data
 console.log(`Reading data from ${inputFile}...`);
@@ -134,6 +136,69 @@ function compareVersions(a, b) {
 
 // Sort version releases by semantic version number (oldest first)
 versionReleases.sort((a, b) => compareVersions(a.version, b.version));
+
+// Calculate additional metrics for each version
+for (let i = 0; i < versionReleases.length; i++) {
+  const currentVersion = versionReleases[i];
+  const currentIdx = currentVersion.index;
+
+  // Special handling for versions that appear on the same date
+  // Find the next version's index, even if it's on the same date
+  let nextIdx = dates.length;
+  let nextVersion = null;
+
+  if (i < versionReleases.length - 1) {
+    // If this is not the last version, use the next version in the sorted list
+    nextVersion = versionReleases[i + 1];
+    nextIdx = nextVersion.index;
+
+    // Special case: If the next version appears on the same date
+    if (nextIdx === currentIdx) {
+      // For versions on the same date, set a minimal duration (1 day)
+      // and assume they are transient versions with no individual impact
+      versionReleases[i].endDownloads = currentVersion.downloads;
+      versionReleases[i].downloadChange = 0;
+      versionReleases[i].durationDays = 0;
+      versionReleases[i].avgDailyGrowth = 0;
+
+      // Log this special case
+      console.log(
+        `Version ${currentVersion.version} appears on the same date as the next version ${nextVersion.version}, setting zero duration and impact.`,
+      );
+
+      // Skip to the next version
+      continue;
+    }
+  }
+
+  // Regular case: calculate metrics
+  const startDownloads = currentVersion.downloads;
+  const endDownloads =
+    nextIdx < downloadCounts.length
+      ? downloadCounts[nextIdx - 1]
+      : downloadCounts[downloadCounts.length - 1];
+  const downloadChange = endDownloads - startDownloads;
+
+  // Calculate duration in days
+  const startDate = dataPoints[currentIdx].date;
+  const endDate =
+    nextIdx < dataPoints.length
+      ? dataPoints[nextIdx - 1].date
+      : dataPoints[dataPoints.length - 1].date;
+  const durationDays = Math.max(
+    1,
+    Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)),
+  );
+
+  // Calculate average daily growth
+  const avgDailyGrowth = Math.round(downloadChange / durationDays);
+
+  // Add to version data
+  versionReleases[i].endDownloads = endDownloads;
+  versionReleases[i].downloadChange = downloadChange;
+  versionReleases[i].durationDays = durationDays;
+  versionReleases[i].avgDailyGrowth = avgDailyGrowth;
+}
 
 // Create a mapping of versions to their indices and rebuild versionIndices
 const versionToIndexMap = new Map();
@@ -335,6 +400,146 @@ datasets.push({
   borderDash: [8, 4], // Long dash
 });
 
+// Extract CSS into a separate file
+const cssContent = `body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+}
+h1 {
+    text-align: center;
+    color: #333;
+    margin-top: 0;
+}
+.chart-container {
+    position: relative;
+    height: 60vh;
+    width: 100%;
+}
+.slider-container {
+    margin: 20px 0;
+    padding: 0 10px;
+}
+#time-slider {
+    height: 10px;
+    margin-top: 40px;
+}
+.time-display {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+}
+.version-list {
+    margin-top: 30px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.version-tag {
+    border-radius: 16px;
+    padding: 5px 12px;
+    font-size: 14px;
+    color: white;
+}
+.stats {
+    margin-top: 20px;
+    display: flex;
+    justify-content: space-around;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+}
+.stat-box {
+    text-align: center;
+}
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #0066cc;
+}
+.stat-label {
+    font-size: 14px;
+    color: #6c757d;
+}
+.noUi-connect {
+    background: #0066cc;
+}
+.noUi-handle {
+    border-radius: 50%;
+    width: 20px !important;
+    height: 20px !important;
+    right: -10px !important;
+    top: -5px !important;
+    background: white;
+    border: 1px solid #0066cc;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+    cursor: grab;
+}
+.noUi-handle::before, .noUi-handle::after {
+    display: none;
+}
+.version-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 30px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 13px;
+}
+.version-table th {
+    background-color: #f8f9fa;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    color: #333;
+    border-bottom: 2px solid #dee2e6;
+    white-space: nowrap;
+}
+.version-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #e9ecef;
+    font-size: 13px;
+}
+.version-table tr:last-child td {
+    border-bottom: none;
+}
+.version-table tr:hover {
+    background-color: #f8f9fa;
+}
+.version-color {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+.version-name {
+    font-weight: 600;
+    vertical-align: middle;
+}
+.positive-change {
+    color: #28a745;
+}
+.table-container {
+    overflow-x: auto;
+    margin-top: 30px;
+}
+.num-cell {
+    text-align: right;
+}`;
+
 // Create the HTML content with the embedded chart
 const htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -347,134 +552,7 @@ const htmlContent = `<!DOCTYPE html>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.css">
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-        }
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-top: 0;
-        }
-        .chart-container {
-            position: relative;
-            height: 60vh;
-            width: 100%;
-        }
-        .slider-container {
-            margin: 20px 0;
-            padding: 0 10px;
-        }
-        #time-slider {
-            height: 10px;
-            margin-top: 40px;
-        }
-        .time-display {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 15px;
-        }
-        .version-list {
-            margin-top: 30px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .version-tag {
-            border-radius: 16px;
-            padding: 5px 12px;
-            font-size: 14px;
-            color: white;
-        }
-        .stats {
-            margin-top: 20px;
-            display: flex;
-            justify-content: space-around;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-        }
-        .stat-box {
-            text-align: center;
-        }
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #0066cc;
-        }
-        .stat-label {
-            font-size: 14px;
-            color: #6c757d;
-        }
-        .noUi-connect {
-            background: #0066cc;
-        }
-        .noUi-handle {
-            border-radius: 50%;
-            width: 20px !important;
-            height: 20px !important;
-            right: -10px !important;
-            top: -5px !important;
-            background: white;
-            border: 1px solid #0066cc;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.2);
-            cursor: grab;
-        }
-        .noUi-handle::before, .noUi-handle::after {
-            display: none;
-        }
-        .version-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .version-table th {
-            background-color: #f8f9fa;
-            padding: 12px 15px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 14px;
-            color: #333;
-            border-bottom: 2px solid #dee2e6;
-        }
-        .version-table td {
-            padding: 10px 15px;
-            border-bottom: 1px solid #e9ecef;
-            font-size: 14px;
-        }
-        .version-table tr:last-child td {
-            border-bottom: none;
-        }
-        .version-table tr:hover {
-            background-color: #f8f9fa;
-        }
-        .version-color {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-        .version-name {
-            font-weight: 600;
-            vertical-align: middle;
-        }
-    </style>
+    <link rel="stylesheet" href="${outputCssFile}">
 </head>
 <body>
     <div class="container">
@@ -517,36 +595,54 @@ const htmlContent = `<!DOCTYPE html>
             </div>
         </div>
         
-        <table class="version-table">
-            <thead>
-                <tr>
-                    <th>Version</th>
-                    <th>Release Date</th>
-                    <th>Downloads at Release</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${versionReleases
-                  .map(
-                    (v, i) => `
-                <tr>
-                    <td>
-                        <span class="version-color" style="background-color: ${
-                          versionColors[i + (firstVersionIdx > 0 ? 1 : 0)]
-                        }"></span>
-                        <span class="version-name">v${v.version}</span>
-                    </td>
-                    <td>${new Date(v.date).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}</td>
-                    <td>${v.downloads.toLocaleString()}</td>
-                </tr>`,
-                  )
-                  .join("")}
-            </tbody>
-        </table>
+        <div class="table-container">
+            <table class="version-table">
+                <thead>
+                    <tr>
+                        <th>Version</th>
+                        <th>Release Date</th>
+                        <th class="num-cell">Downloads at Release</th>
+                        <th class="num-cell">Downloads at End</th>
+                        <th class="num-cell">Download Change</th>
+                        <th class="num-cell">Duration (Days)</th>
+                        <th class="num-cell">Avg Daily Growth</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${versionReleases
+                      .map(
+                        (v, i) => `
+                    <tr>
+                        <td>
+                            <span class="version-color" style="background-color: ${
+                              versionColors[i + (firstVersionIdx > 0 ? 1 : 0)]
+                            }"></span>
+                            <span class="version-name">v${v.version}</span>
+                        </td>
+                        <td>${new Date(v.date).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}</td>
+                        <td class="num-cell">${v.downloads.toLocaleString()}</td>
+                        <td class="num-cell">${v.endDownloads.toLocaleString()}</td>
+                        <td class="num-cell ${
+                          v.downloadChange > 0 ? "positive-change" : ""
+                        }">${
+                          v.downloadChange > 0 ? "+" : ""
+                        }${v.downloadChange.toLocaleString()}</td>
+                        <td class="num-cell">${v.durationDays}</td>
+                        <td class="num-cell ${
+                          v.avgDailyGrowth > 0 ? "positive-change" : ""
+                        }">${
+                          v.avgDailyGrowth > 0 ? "+" : ""
+                        }${v.avgDailyGrowth.toLocaleString()}</td>
+                    </tr>`,
+                      )
+                      .join("")}
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script>
@@ -786,8 +882,9 @@ const htmlContent = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// Write the HTML file
+// Write the CSS and HTML files
 console.log(`Writing chart to ${outputHtmlFile}...`);
+fs.writeFileSync(outputCssFile, cssContent);
 fs.writeFileSync(outputHtmlFile, htmlContent);
 
 console.log(`Done! Open ${outputHtmlFile} in your browser to view the chart.`);
