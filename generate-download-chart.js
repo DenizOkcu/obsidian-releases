@@ -72,23 +72,78 @@ const newestDate = dataPoints[dataPoints.length - 1].date.getTime();
 // Get version release points for annotations and dataset segmentation
 const versionReleases = [];
 const processedVersions = new Set();
-const versionIndices = []; // To track where each version starts
 
+// First, collect all versions
 dataPoints.forEach((point, index) => {
   const versions = Object.keys(point.versions);
   versions.forEach((version) => {
     if (!processedVersions.has(version)) {
       processedVersions.add(version);
+
+      // Log found versions for debugging
+      console.log(
+        `Found version ${version} at index ${index} (${
+          point.date.toISOString().split("T")[0]
+        })`,
+      );
+
       versionReleases.push({
         version,
         date: point.date,
         index,
         downloads: point.downloads,
       });
-      versionIndices.push(index); // Mark this index as a version change point
     }
   });
 });
+
+console.log(`Total unique versions found: ${versionReleases.length}`);
+
+// Helper function to compare semantic versions correctly
+function compareVersions(a, b) {
+  // Handle special cases like beta, alpha, etc.
+  const aBase = a.split(/[-+]/)[0]; // Get the part before any -beta, -alpha, etc.
+  const bBase = b.split(/[-+]/)[0];
+
+  const aParts = aBase.split(".").map((part) => parseInt(part, 10) || 0);
+  const bParts = bBase.split(".").map((part) => parseInt(part, 10) || 0);
+
+  // Compare version numbers (major.minor.patch)
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || 0;
+    const bPart = bParts[i] || 0;
+    if (aPart !== bPart) {
+      return aPart - bPart;
+    }
+  }
+
+  // If base versions are the same, consider pre-release tags
+  // Versions with no pre-release tag come AFTER those with one (per semver spec)
+  const aHasPreRelease = a.includes("-");
+  const bHasPreRelease = b.includes("-");
+
+  if (!aHasPreRelease && bHasPreRelease) return 1; // a is greater (no pre-release)
+  if (aHasPreRelease && !bHasPreRelease) return -1; // b is greater (no pre-release)
+  if (!aHasPreRelease && !bHasPreRelease) return 0;
+
+  // Both have pre-release tags, compare them lexically
+  const aPreRelease = a.split("-")[1];
+  const bPreRelease = b.split("-")[1];
+  return aPreRelease.localeCompare(bPreRelease);
+}
+
+// Sort version releases by semantic version number (oldest first)
+versionReleases.sort((a, b) => compareVersions(a.version, b.version));
+
+// Create a mapping of versions to their indices and rebuild versionIndices
+const versionToIndexMap = new Map();
+versionReleases.forEach((release, index) => {
+  versionToIndexMap.set(release.version, index);
+});
+
+// Use index of the first version release in the sorted data
+const firstVersionIdx =
+  versionReleases.length > 0 ? versionReleases[0].index : 0;
 
 // Generate unique colors for each version
 function generateColors(count) {
@@ -174,30 +229,66 @@ for (let i = 0; i < derivativeData.length; i++) {
 }
 
 // Add datasets for downloads by version
-for (let i = 0; i <= versionIndices.length; i++) {
-  const startIdx = i === 0 ? 0 : versionIndices[i - 1];
-  const endIdx = i === versionIndices.length ? dates.length : versionIndices[i];
+const versionDatasets = [];
 
-  if (startIdx < endIdx) {
-    const version = i === 0 ? "Initial" : versionReleases[i - 1].version;
-    datasets.push({
-      label: `v${version}`,
-      data: Array(startIdx)
-        .fill(null)
-        .concat(downloadCounts.slice(startIdx, endIdx))
-        .concat(Array(dates.length - endIdx).fill(null)),
-      borderColor: versionColors[i % versionColors.length],
-      backgroundColor: `${versionColors[i % versionColors.length]}22`,
-      borderWidth: 3,
-      pointRadius: 1, // Reduced dot size
-      pointHoverRadius: 4, // Reduced hover dot size
-      pointBackgroundColor: versionColors[i % versionColors.length],
-      fill: true,
-      tension: 0.1,
-      yAxisID: "y", // Explicitly use the left axis
-    });
-  }
+// First create an "Initial" dataset for data before the first version
+if (firstVersionIdx > 0) {
+  versionDatasets.push({
+    label: "Initial",
+    data: downloadCounts
+      .slice(0, firstVersionIdx)
+      .concat(Array(dates.length - firstVersionIdx).fill(null)),
+    borderColor: versionColors[0],
+    backgroundColor: `${versionColors[0]}22`,
+    borderWidth: 3,
+    pointRadius: 1,
+    pointHoverRadius: 4,
+    pointBackgroundColor: versionColors[0],
+    fill: true,
+    tension: 0.1,
+    yAxisID: "y",
+  });
 }
+
+// Now add a dataset for each version
+for (let i = 0; i < versionReleases.length; i++) {
+  const currentVersion = versionReleases[i];
+  const currentIdx = currentVersion.index;
+
+  // Find the next data point where a different version appears
+  let nextIdx = dates.length; // default to end of data
+
+  // Use all data points until the next version, or until the end of data
+  for (let j = i + 1; j < versionReleases.length; j++) {
+    const nextVersion = versionReleases[j];
+    // Only consider it a boundary if this version shows up later in the dataset
+    if (nextVersion.index > currentIdx) {
+      nextIdx = nextVersion.index;
+      break;
+    }
+  }
+
+  // Create a dataset for this version
+  versionDatasets.push({
+    label: `v${currentVersion.version}`,
+    data: Array(currentIdx)
+      .fill(null)
+      .concat(downloadCounts.slice(currentIdx, nextIdx))
+      .concat(Array(dates.length - nextIdx).fill(null)),
+    borderColor: versionColors[i + (firstVersionIdx > 0 ? 1 : 0)],
+    backgroundColor: `${versionColors[i + (firstVersionIdx > 0 ? 1 : 0)]}22`,
+    borderWidth: 3,
+    pointRadius: 1,
+    pointHoverRadius: 4,
+    pointBackgroundColor: versionColors[i + (firstVersionIdx > 0 ? 1 : 0)],
+    fill: true,
+    tension: 0.1,
+    yAxisID: "y",
+  });
+}
+
+// Add all version datasets to the datasets array
+datasets.push(...versionDatasets);
 
 // Add the rate of change dataset
 datasets.push({
@@ -441,7 +532,7 @@ const htmlContent = `<!DOCTYPE html>
                 <tr>
                     <td>
                         <span class="version-color" style="background-color: ${
-                          versionColors[i]
+                          versionColors[i + (firstVersionIdx > 0 ? 1 : 0)]
                         }"></span>
                         <span class="version-name">v${v.version}</span>
                     </td>
@@ -491,20 +582,21 @@ const htmlContent = `<!DOCTYPE html>
         const versionColors = ${JSON.stringify(versionColors)};
         const oldestDate = ${oldestDate};
         const newestDate = ${newestDate};
+        const firstVersionIdx = ${firstVersionIdx};
         
         // Create annotations for version releases
         const annotations = versionReleases.map((release, index) => ({
             type: 'line',
             xMin: dates[release.index],
             xMax: dates[release.index],
-            borderColor: versionColors[index],
+            borderColor: versionColors[index + (firstVersionIdx > 0 ? 1 : 0)],
             borderWidth: 2,
             borderDash: [5, 5],
             label: {
                 content: 'v' + release.version,
                 enabled: true,
                 position: 'top',
-                backgroundColor: versionColors[index],
+                backgroundColor: versionColors[index + (firstVersionIdx > 0 ? 1 : 0)],
                 color: 'white',
                 font: {
                     size: 10,
