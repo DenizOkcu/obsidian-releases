@@ -47,9 +47,8 @@ for (const commit of commits) {
     const downloads = pluginData.downloads || 0;
     const date = new Date(commit.timestamp).toISOString().split("T")[0]; // Format as YYYY-MM-DD
 
-    // Create a record for this point in time with proper structure
-    // Store as key-value pair using the commit hash as key
-    history[commit.hash] = {
+    // Create a record for this point in time with timestamp as the key
+    history[commit.timestamp] = {
       date,
       data: {
         downloads,
@@ -62,12 +61,12 @@ for (const commit of commits) {
       if (key === "downloads" || key === "updated") continue;
 
       // Add version info directly to the data object
-      history[commit.hash].data[key] = pluginData[key];
+      history[commit.timestamp].data[key] = pluginData[key];
     }
 
     console.log(
       `Added entry for ${date}: ${downloads} downloads with ${
-        Object.keys(history[commit.hash].data).length - 1
+        Object.keys(history[commit.timestamp].data).length - 1
       } versions`,
     );
   } catch (error) {
@@ -75,6 +74,15 @@ for (const commit of commits) {
   }
 }
 
+// Sort the history by timestamp (keys are already timestamps)
+const sortedHistory = {};
+Object.keys(history)
+  .map((timestamp) => parseInt(timestamp)) // Convert string keys to numbers for proper sorting
+  .sort((a, b) => b - a) // Sort newest to oldest
+  .forEach((timestamp) => {
+    sortedHistory[timestamp] = history[timestamp];
+  });
+
 // Write the results to a file
-fs.writeFileSync(outputFile, JSON.stringify(history, null, 2));
+fs.writeFileSync(outputFile, JSON.stringify(sortedHistory, null, 2));
 console.log(`Saved history to ${outputFile}`);
