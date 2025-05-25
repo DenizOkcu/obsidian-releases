@@ -246,7 +246,7 @@ for (let i = 1; i < downloadCounts.length; i++) {
   const downloadDifference = downloadCounts[i] - downloadCounts[i - 1];
   const rate = daysDifference > 0 ? downloadDifference / daysDifference : 0;
   derivativeData.push({
-    x: dataPoints[i].date.toISOString(),
+    x: dataPoints[i - 1].date.toISOString(), // Use the previous day's date since this is the rate FROM that day
     y: Math.round(rate), // Round to integer
   });
 }
