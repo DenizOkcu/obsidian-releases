@@ -24,11 +24,15 @@ console.log(`Processing data for the chart...`);
 
 // Convert the data into a chronologically ordered array
 const dataPoints = Object.entries(historicalData)
-  .map(([commitHash, entry]) => ({
-    date: new Date(entry.date),
+  .map(([timestamp, entry]) => ({
+    date: new Date(parseInt(timestamp)), // Use the timestamp directly from the key
     downloads: entry.data.downloads || 0,
+    dailyGrowth: entry.data.dailyGrowth || 0,
     versions: Object.entries(entry.data)
-      .filter(([key]) => key !== "downloads" && key !== "updated")
+      .filter(
+        ([key]) =>
+          key !== "downloads" && key !== "updated" && key !== "dailyGrowth",
+      )
       .reduce((acc, [version, count]) => {
         acc[version] = count;
         return acc;
@@ -68,6 +72,12 @@ dataPoints.forEach((point) => {
 // Create arrays for chart data
 const dates = dataPoints.map((point) => point.date.toISOString());
 const downloadCounts = dataPoints.map((point) => point.downloads);
+
+// Extract daily growth data directly from dataPoints
+const derivativeData = dataPoints.map((point) => ({
+  x: point.date.toISOString(),
+  y: point.dailyGrowth || 0, // Use 0 if dailyGrowth is not present
+}));
 const oldestDate = dataPoints[0].date.getTime();
 const newestDate = dataPoints[dataPoints.length - 1].date.getTime();
 
@@ -237,19 +247,6 @@ const versionColors = generateColors(versionReleases.length);
 
 // Break the data into segments by version
 const datasets = [];
-const derivativeData = [];
-
-// Calculate rate of change (downloads per day)
-for (let i = 1; i < downloadCounts.length; i++) {
-  const daysDifference =
-    (dataPoints[i].date - dataPoints[i - 1].date) / (1000 * 60 * 60 * 24); // Convert ms to days
-  const downloadDifference = downloadCounts[i] - downloadCounts[i - 1];
-  const rate = daysDifference > 0 ? downloadDifference / daysDifference : 0;
-  derivativeData.push({
-    x: dataPoints[i - 1].date.toISOString(), // Use the previous day's date since this is the rate FROM that day
-    y: Math.round(rate), // Round to integer
-  });
-}
 
 // Calculate 7-day rolling average of the daily download rates
 const rollingAverageData7Day = [];

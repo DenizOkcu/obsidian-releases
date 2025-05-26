@@ -128,19 +128,42 @@ for (let i = 0; i < rawData.length; i++) {
 
 console.log(`Filtered out ${skippedCount} anomalous data points`);
 
-// Third phase: Format the final result
+// Third phase: Format the final result and calculate daily growth
 const history = {};
+let previousDownloads = 0;
+let previousTimestamp = 0;
 
-validData.forEach((point) => {
+// Iterate from oldest to newest to calculate growth correctly
+for (let i = validData.length - 1; i >= 0; i--) {
+  const point = validData[i];
+  let dailyGrowth = 0;
+
+  if (i === validData.length - 1) {
+    // First data point (oldest)
+    dailyGrowth = point.downloads; // Growth from zero
+  } else {
+    const daysDifference =
+      (point.timestamp - previousTimestamp) / (1000 * 60 * 60 * 24);
+    const downloadDifference = point.downloads - previousDownloads;
+    dailyGrowth =
+      daysDifference > 0 ? Math.round(downloadDifference / daysDifference) : 0;
+  }
+
   history[point.timestamp] = {
     date: point.date,
     data: {
       downloads: point.downloads,
+      dailyGrowth: dailyGrowth,
       ...point.versions,
     },
   };
-});
+
+  previousDownloads = point.downloads;
+  previousTimestamp = point.timestamp;
+}
 
 // Write the results to a file
 fs.writeFileSync(outputFile, JSON.stringify(history, null, 2));
-console.log(`Saved ${validData.length} valid data points to ${outputFile}`);
+console.log(
+  `Saved ${Object.keys(history).length} data points to ${outputFile}`,
+);
