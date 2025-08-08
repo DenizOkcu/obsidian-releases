@@ -24,13 +24,24 @@ const outputFile = `${pluginName
 console.log(`Extracting stats history for "${pluginName}" plugin...`);
 
 // Get git commits that modified the stats file
-const gitLogCommand = `git log --pretty=format:"%H %at" -- ${statsFile}`;
+const gitLogCommand = `git log --pretty=format:"%H %at %s" -- ${statsFile}`;
 const commits = execSync(gitLogCommand, { encoding: "utf8" })
   .trim()
   .split("\n")
   .map((line) => {
-    const [hash, timestamp] = line.split(" ");
-    return { hash, timestamp: parseInt(timestamp) * 1000 }; // Convert to milliseconds
+    const parts = line.split(" ");
+    const hash = parts[0];
+    const timestamp = parts[1];
+    const message = parts.slice(2).join(" "); // Rejoin the commit message
+    return { hash, timestamp: parseInt(timestamp) * 1000, message }; // Convert to milliseconds
+  })
+  .filter((commit) => {
+    // Skip JSON formatting commits as they don't change actual plugin stats
+    if (commit.message === "chore: Format JSON") {
+      console.log(`Skipping formatting commit: ${commit.hash.substring(0, 8)} - "${commit.message}"`);
+      return false;
+    }
+    return true;
   });
 
 console.log(`Found ${commits.length} commits that modified the stats file.`);
